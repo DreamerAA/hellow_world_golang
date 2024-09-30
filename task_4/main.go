@@ -5,27 +5,30 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 )
 
-func readDataFromUrl(worker UrlWorker) string {
+func readDataFromUrl(worker UrlWorker) (string, error) {
 	resp, err := http.Get(worker.url)
 	if err != nil {
-		fmt.Println("Error reading data from url", err)
+		return "", fmt.Errorf("error reading data from url: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Error reading body of data", err)
+		return "", fmt.Errorf("error reading body of data: %w", err)
 	}
-	return worker.operation(string(body))
+	return worker.operation(string(body)), nil
 }
 
 func readFromUrlandMoveToChanel(worker UrlWorker, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for i := 0; i < 10; i++ {
-		result := readDataFromUrl(worker)
+		result, err := readDataFromUrl(worker)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		worker.chanel <- result
 		fmt.Println(i)
 	}
@@ -49,6 +52,16 @@ func stringToJsonObject(text string) map[string]interface{} {
 	return result
 }
 
+func stringToJsonArray(text string) []map[string]interface{} {
+	var result []map[string]interface{}
+	err := json.Unmarshal([]byte(text), &result)
+	if err != nil {
+		fmt.Println("Error converting string to json", err)
+		return nil
+	}
+	return result
+}
+
 func main() {
 	workers := []UrlWorker{
 		{
@@ -59,12 +72,19 @@ func main() {
 				result := stringToJsonObject(text)
 				if result == nil {
 					fmt.Println("Error reading data from url")
+					return ""
 				}
-				file_name := "response.json"
-				os.WriteFile(file_name, []byte(text), 0644)
 
-				rates := result["rates"].(map[string]interface{})
-				rub := rates["RUB"].(float64)
+				rates, ok := result["rates"].(map[string]interface{})
+				if !ok {
+					fmt.Println("Error: 'rates' not found or has wrong format")
+					return ""
+				}
+				rub, ok := rates["RUB"].(float64)
+				if !ok {
+					fmt.Println("Error: 'RUB' not found or has wrong format")
+					return ""
+				}
 				return fmt.Sprint(rub)
 			},
 		},
@@ -73,27 +93,36 @@ func main() {
 			"https://official-joke-api.appspot.com/jokes/programming/random",
 			make(chan string),
 			func(text string) string {
-				if len(text) == 0 {
-					return text
-				}
-				if text[0] == '[' {
-					text = text[1:(len(text) - 1)]
-				}
-				result := stringToJsonObject(text)
+				result := stringToJsonArray(text)
 				if result == nil {
 					fmt.Println("Error reading data from url")
+					return ""
 				}
-				setup := result["setup"].(string)
-				punchline := result["punchline"].(string)
+				if len(result) != 1 {
+					fmt.Println("Error: expected 1 joke")
+					return ""
+				}
+				json_joke := result[0]
+				setup, ok := json_joke["setup"].(string)
+				if !ok {
+					fmt.Println("Error: 'setup' not found or has wrong format")
+					return ""
+				}
+				punchline, ok := json_joke["punchline"].(string)
+				if !ok {
+					fmt.Println("Error: 'punchline' not found or has wrong format")
+					return ""
+				}
 				return setup + " " + punchline
 			},
 		},
 	}
-	var wg sync.WaitGroup
+	var wg_get sync.WaitGroup
 	for _, worker := range workers {
-		wg.Add(1)
-		go readFromUrlandMoveToChanel(worker, &wg)
+		wg_get.Add(1)
+		go readFromUrlandMoveToChanel(worker, &wg_get)
 	}
+
 	for _, worker := range workers {
 		go func(w UrlWorker) {
 			for result := range w.chanel {
@@ -102,7 +131,7 @@ func main() {
 		}(worker)
 	}
 	// Ждём завершения всех горутин
-	wg.Wait()
+	wg_get.Wait()
 	fmt.Println("Все горутины завершены")
 
 }
