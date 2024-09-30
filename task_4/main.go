@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"sync"
 )
 
 func readDataFromUrl(worker UrlWorker) string {
@@ -20,10 +22,12 @@ func readDataFromUrl(worker UrlWorker) string {
 	return worker.operation(string(body))
 }
 
-func readFromUrlandMoveToChanel(worker UrlWorker) {
+func readFromUrlandMoveToChanel(worker UrlWorker, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for i := 0; i < 10; i++ {
 		result := readDataFromUrl(worker)
 		worker.chanel <- result
+		fmt.Println(i)
 	}
 	close(worker.chanel)
 }
@@ -35,11 +39,11 @@ type UrlWorker struct {
 	operation   func(url string) string
 }
 
-func stringToJson(text string) map[string]interface{} {
+func stringToJsonObject(text string) map[string]interface{} {
 	var result map[string]interface{}
 	err := json.Unmarshal([]byte(text), &result)
 	if err != nil {
-		fmt.Println("Error reading data from url", err)
+		fmt.Println("Error converting string to json", err)
 		return nil
 	}
 	return result
@@ -52,11 +56,16 @@ func main() {
 			"https://api.exchangerate-api.com/v4/latest/USD",
 			make(chan string),
 			func(text string) string {
-				result := stringToJson(text)
+				result := stringToJsonObject(text)
 				if result == nil {
 					fmt.Println("Error reading data from url")
 				}
-				return result["rates"].(map[string]interface{})["RUB"].(string)
+				file_name := "response.json"
+				os.WriteFile(file_name, []byte(text), 0644)
+
+				rates := result["rates"].(map[string]interface{})
+				rub := rates["RUB"].(float64)
+				return fmt.Sprint(rub)
 			},
 		},
 		{
@@ -64,7 +73,13 @@ func main() {
 			"https://official-joke-api.appspot.com/jokes/programming/random",
 			make(chan string),
 			func(text string) string {
-				result := stringToJson(text)
+				if len(text) == 0 {
+					return text
+				}
+				if text[0] == '[' {
+					text = text[1:(len(text) - 1)]
+				}
+				result := stringToJsonObject(text)
 				if result == nil {
 					fmt.Println("Error reading data from url")
 				}
@@ -74,23 +89,20 @@ func main() {
 			},
 		},
 	}
+	var wg sync.WaitGroup
 	for _, worker := range workers {
-		go readFromUrlandMoveToChanel(worker)
-
+		wg.Add(1)
+		go readFromUrlandMoveToChanel(worker, &wg)
 	}
-	select {
-	case result, ok := <-workers[0].chanel:
-		if !ok {
-			fmt.Println("channel was closed")
-		} else {
-			fmt.Println(workers[0].description + " " + result)
-		}
-
-	case result, ok := <-workers[1].chanel:
-		if !ok {
-			fmt.Println("channel was closed")
-		} else {
-			fmt.Println(workers[1].description + " " + result)
-		}
+	for _, worker := range workers {
+		go func(w UrlWorker) {
+			for result := range w.chanel {
+				fmt.Println(w.description + " " + result)
+			}
+		}(worker)
 	}
+	// Ждём завершения всех горутин
+	wg.Wait()
+	fmt.Println("Все горутины завершены")
+
 }
