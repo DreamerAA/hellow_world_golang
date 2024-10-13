@@ -10,18 +10,12 @@ import (
 func getFileNames(path string) []string {
 	dir, err := os.ReadDir(path)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "Error reading directory: %v\n", err)
+		os.Exit(1)
 	}
 	var file_names []string
 	for _, file := range dir {
 		file_names = append(file_names, file.Name())
-	}
-	return file_names
-}
-func toUpperCase(data []string) []string {
-	var file_names []string
-	for _, line := range data {
-		file_names = append(file_names, strings.ToUpper(line))
 	}
 	return file_names
 }
@@ -48,25 +42,22 @@ func main() {
 	has_list := *list != ""
 	has_convert := *convert != ""
 
+	if !has_list && !has_convert {
+		flag.CommandLine.Usage()
+	}
+
 	var file_names []string
 	if has_list {
 		file_names = getFileNames(*list)
-		if has_convert {
-			file_names = append(file_names, *convert)
+		if len(file_names) == 0 {
+			fmt.Println("No files or text to process")
+			os.Exit(1)
 		}
-	} else if has_convert {
-		file_names = append(file_names, *convert)
-	} else {
-		flag.CommandLine.Usage()
+		for _, file_name := range file_names {
+			fmt.Println(file_name)
+		}
 	}
-	if len(file_names) == 0 {
-		panic("No files found")
-	}
-
 	if has_convert {
-		file_names = toUpperCase(file_names)
-	}
-	for _, file_name := range file_names {
-		fmt.Println(file_name)
+		fmt.Println(strings.ToUpper(*convert))
 	}
 }
