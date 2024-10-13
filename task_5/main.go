@@ -11,14 +11,17 @@ type Response struct {
 	Status  int    `json:"status"`
 }
 
+func createSuccessResponse(message string) Response {
+	return Response{Message: message, Status: 200}
+}
+
 func putResponseToJson(response Response, w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-func setNotFoundResponse(w http.ResponseWriter) {
-	response := Response{Message: "Not Found", Status: 404}
-	putResponseToJson(response, w)
+func setNotFoundResponse(w http.ResponseWriter, r *http.Request) {
+	http.NotFound(w, r)
 }
 
 func registerGetRequests() {
@@ -27,17 +30,16 @@ func registerGetRequests() {
 	})
 
 	http.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
-		response := Response{Message: "Hello, this is JSON response!", Status: 200}
+		response := createSuccessResponse("Hello, this is JSON response!")
 		putResponseToJson(response, w)
 	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		setNotFoundResponse(w)
+		setNotFoundResponse(w, r)
 	})
 }
 func registerPostRequests() {
 	http.HandleFunc("/post", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			setNotFoundResponse(w)
+		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -48,7 +50,7 @@ func registerPostRequests() {
 			return
 		}
 		if message, ok := data["message"].(string); ok {
-			response := Response{Message: fmt.Sprintf("Hello, %s!", message), Status: 200}
+			response := createSuccessResponse(fmt.Sprintf("Hello, %s!", message))
 			putResponseToJson(response, w)
 		} else {
 			http.Error(w, "Bad request", http.StatusBadRequest)
