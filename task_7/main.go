@@ -1,8 +1,8 @@
 package main
 
 import (
+	"container/list"
 	"fmt"
-	"math"
 	"strconv"
 )
 
@@ -14,16 +14,6 @@ type ICache interface {
 
 type SimpleCache struct {
 	data map[string]interface{}
-}
-
-type DataWrapper struct {
-	data    string
-	counter int
-}
-
-type LRUCache struct {
-	SimpleCache
-	count int
 }
 
 func (c *SimpleCache) Set(key string, value interface{}) {
@@ -39,34 +29,61 @@ func (c *SimpleCache) Delete(key string) {
 	delete(c.data, key)
 }
 
-func (c *LRUCache) getMinimumAndDelete() {
-	leastUsedKey := ""
-	leastUsedCounter := math.MaxInt
-	for key, value := range c.data {
-		data := value.(*DataWrapper)
-		if data.counter < leastUsedCounter {
-			leastUsedCounter = data.counter
-			leastUsedKey = key
-		}
+type DataWrapper struct {
+	key  string
+	data string
+}
+
+type LRUCache struct {
+	data     map[string]*list.Element
+	list     *list.List
+	capacity int
+}
+
+func NewLRUCache(capacity int) *LRUCache {
+	if capacity <= 0 {
+		panic("LRUCache capacity must be greater than 0")
 	}
-	delete(c.data, leastUsedKey)
+	return &LRUCache{
+		data:     make(map[string]*list.Element),
+		list:     list.New(),
+		capacity: capacity,
+	}
 }
 
 func (c *LRUCache) Set(key string, value interface{}) {
-	if len(c.data) >= c.count {
-		c.getMinimumAndDelete()
+	if elem, ok := c.data[key]; ok {
+		c.list.MoveToFront(elem)
+		(*elem).Value.(*DataWrapper).data = value.(string)
+		return
 	}
-	c.data[key] = &DataWrapper{value.(string), 0}
+
+	if c.list.Len() == c.capacity {
+		least_used_elem := c.list.Back()
+		least_used_key := least_used_elem.Value.(*DataWrapper).key
+		c.list.Remove(least_used_elem)
+		delete(c.data, least_used_key)
+	}
+	new_elem := c.list.PushBack(&DataWrapper{key, value.(string)})
+	c.data[key] = new_elem
 }
+
 func (c *LRUCache) Get(key string) (interface{}, bool) {
-	value, ok := c.data[key]
+	elem, ok := c.data[key]
 	if !ok {
 		return nil, ok
 	}
+	c.list.MoveToFront(elem)
+	return elem.Value.(*DataWrapper).data, ok
+}
 
-	wrapper := (value).(*DataWrapper)
-	wrapper.counter++
-	return wrapper.data, ok
+func (c *LRUCache) Delete(key string) {
+	elem, ok := c.data[key]
+	if !ok {
+		return
+	}
+	c.list.Remove(elem)
+	delete(c.data, key)
 }
 
 func testPolymorphism(cache ICache) {
@@ -91,13 +108,13 @@ func setValues(cache ICache) {
 }
 
 func main() {
-	simple_cache := SimpleCache{data: make(map[string]interface{})}
-	lru_cache := LRUCache{SimpleCache{data: make(map[string]interface{})}, 3}
+	simple_cache := &SimpleCache{data: make(map[string]interface{})}
+	lru_cache := NewLRUCache(3)
 
-	setValues(&simple_cache)
-	setValues(&lru_cache)
+	setValues(simple_cache)
+	setValues(lru_cache)
 
-	repeatGet(&simple_cache)
+	repeatGet(simple_cache)
 
 	fmt.Println(simple_cache.Get("key1"))
 	simple_cache.Set("key4", "value4")
@@ -105,14 +122,17 @@ func main() {
 	simple_cache.Delete("key1")
 	fmt.Println(simple_cache.Get("key1"))
 
-	repeatGet(&lru_cache)
+	repeatGet(lru_cache)
 
-	fmt.Println(lru_cache.Get("key1"))
+	fmt.Println(len(lru_cache.data), lru_cache.list.Len())
 	lru_cache.Set("key4", "value4")
-	fmt.Println(lru_cache.Get("key1"))
+	lru_cache.Set("key5", "value5")
+	lru_cache.Set("key6", "value6")
+	fmt.Println(len(lru_cache.data), lru_cache.list.Len())
 	lru_cache.Delete("key1")
-	fmt.Println(lru_cache.Get("key1"))
+	lru_cache.Delete("key2")
+	fmt.Println(len(lru_cache.data), lru_cache.list.Len())
 
-	testPolymorphism(&simple_cache)
-	testPolymorphism(&lru_cache)
+	testPolymorphism(simple_cache)
+	testPolymorphism(lru_cache)
 }
