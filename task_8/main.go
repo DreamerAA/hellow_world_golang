@@ -17,12 +17,60 @@ type Command struct {
 	operation func(string) (string, error)
 }
 
+type Task struct {
+	id          int
+	title       string
+	description string
+	status      TaskStatus
+}
+
+type TaskStatus int
+
+const (
+	Opened = iota
+	InProgress
+	Completed
+)
+
+var (
+	capabilitiesMap = map[string]TaskStatus{
+		"Opened":     Opened,
+		"InProgress": InProgress,
+		"Completed":  Completed,
+	}
+)
+
+func ParseString(str string) (TaskStatus, bool) {
+	c, ok := capabilitiesMap[str]
+	return c, ok
+}
+func (s TaskStatus) String() string {
+	switch s {
+	case Opened:
+		return "Открыт"
+	case InProgress:
+		return "В процессе"
+	case Completed:
+		return "Завершен"
+	default:
+		return "Неизвестно"
+	}
+}
+
 func createTable(db *sql.DB, table_name string) {
+	query_enum := "CREATE TYPE taskstatus AS ENUM ('Opened', 'InProgress', 'Completed');"
+	_, err := db.Exec(query_enum)
+	if err != nil {
+		fmt.Println("Ошибка создания enum:", err)
+	} else {
+		fmt.Println("enum успешно создан или уже существует!")
+	}
+
 	query :=
 		"CREATE TABLE IF NOT EXISTS " + table_name +
-			"(id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, status BOOLEAN DEFAULT FALSE);"
+			"(id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, status taskstatus DEFAULT 'Opened');"
 
-	_, err := db.Exec(query)
+	_, err = db.Exec(query)
 	if err != nil {
 		fmt.Println("Ошибка создания таблицы:", err)
 	} else {
@@ -54,7 +102,7 @@ func main() {
 				}
 
 				title, description := datas[0], datas[1]
-				query := `INSERT INTO tasks (title, description, status) VALUES ($1, $2, false) RETURNING id`
+				query := `INSERT INTO tasks (title, description) VALUES ($1, $2) RETURNING id;`
 				var id int
 				err := db.QueryRow(query, title, description).Scan(&id)
 
@@ -67,9 +115,15 @@ func main() {
 		"rm": {
 			"Insert into table",
 			func(text string) (string, error) {
-				id, err := strconv.Atoi(text)
+				data := strings.Split(text, "=")
+				if len(data) != 2 || data[0] != "id" {
+					return "", fmt.Errorf("Invalid input")
+				}
+
+				id, err := strconv.Atoi(data[1])
+
 				if err != nil {
-					fmt.Printf("%q does not looks like a number.\n", text)
+					fmt.Printf("%q does not looks like a number.\n", data[1])
 					return "", fmt.Errorf("Invalid input")
 				}
 				query := `DELETE FROM tasks WHERE id = $1`
@@ -77,24 +131,93 @@ func main() {
 				if err != nil {
 					return "", err
 				}
-				return "", nil
+				return fmt.Sprintf("Tast deleted with id = %d", id), nil
+			},
+		},
+		"list": {
+			"List tasks",
+			func(text string) (string, error) {
+				sortBy, sortOrder := "status", "ASC"
+				query := fmt.Sprintf("SELECT id, title, description, status FROM tasks ORDER BY %s %s;", sortBy, sortOrder)
+				rows, err := db.Query(query)
+				if err != nil {
+					return "", err
+				}
+				defer rows.Close()
+
+				var tasks []string
+				var task Task
+				for rows.Next() {
+					str_status := ""
+					err := rows.Scan(&task.id, &task.title, &task.description, &str_status)
+
+					if err != nil {
+						return "", err
+					}
+					var ok bool
+					task.status, ok = ParseString(str_status)
+					if !ok {
+						return "", err
+					}
+					result := strconv.Itoa(task.id) + " "
+					result += task.title + " "
+					result += task.status.String() + " "
+					result += task.description
+					tasks = append(tasks, result)
+				}
+				return strings.Join(tasks, "\n"), nil
+			},
+		},
+		"update": {
+			"Update task",
+			func(text string) (string, error) {
+				args := strings.Split(text, " ")
+				var new_params = make(map[string]string)
+				id := -1
+				for _, arg := range args {
+					data := strings.Split(arg, "=")
+					if len(data) != 2 {
+						return "", fmt.Errorf("Invalid input")
+					}
+					name_param := data[0]
+					if name_param == "id" {
+						if id != -1 {
+							fmt.Println("You can use only one id")
+						}
+						lid, err := strconv.Atoi(data[1])
+						if err != nil {
+							fmt.Printf("%q does not looks like a number.\n", data[1])
+						} else {
+							id = lid
+						}
+					} else {
+						new_params[name_param] = data[1]
+					}
+				}
+				if len(new_params) == 0 || id == -1 {
+					return "", fmt.Errorf("Invalid input")
+				}
+				query := "UPDATE tasks SET "
+				ind := 1
+				for k, v := range new_params {
+					query += k + "='" + v + "'"
+					ind = ind + 1
+					if ind < len(new_params) {
+						query += ", "
+					}
+				}
+				query += " WHERE id = $1;"
+				fmt.Println("query=", query)
+				_, err := db.Exec(query, id)
+
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("Task with id = %d updated", id), nil
 			},
 		},
 	}
 
-	// 	Таблица tasks:
-	// id: уникальный идентификатор задачи (целое число).
-	// title: заголовок задачи (строка).
-	// description: описание задачи (строка).
-	// status: статус выполнения задачи (булево значение, например, true — выполнена, false — невыполнена).
-
-	// Добавление задачи: Указать заголовок и описание задачи.
-	// Удаление задачи: Удалить задачу по её id.
-	// Изменение задачи: Изменить статус задачи или её описание.
-	// Просмотр всех задач: Показать все задачи, отсортированные по статусу выполнения.
-
-	// value, _ := commands["add"]
-	// value.operation("task_1 description_1")
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("Enter query: ")
