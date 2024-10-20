@@ -116,6 +116,31 @@ func createTable(db *sql.DB, table_name string) {
 	}
 }
 
+func createSelectQuery(header string, filters map[string]string, order_params string) (string, []interface{}) {
+	query := header
+	args := []interface{}{}
+	argCount := 1
+
+	// Добавление фильтров с плейсхолдерами
+	if len(filters) > 0 {
+		query += " WHERE "
+		for key, value := range filters {
+			query += fmt.Sprintf("%s = $%d", key, argCount)
+			if argCount > 1 {
+				query += " AND "
+			}
+			args = append(args, value)
+			argCount++
+		}
+	}
+	// Добавление параметров сортировки
+	if order_params != "" {
+		query += " ORDER BY " + order_params
+	}
+
+	return query, args
+}
+
 func createQuery(header string, new_params map[string]string, splitter string) (string, []interface{}) {
 	query := header
 	ind := 1
@@ -203,20 +228,32 @@ func main() {
 		"list": {
 			"List tasks",
 			func(text string) (string, error) {
-
-				new_params, _, err := splitParams(text)
+				ftext := ""
+				otext := ""
+				if strings.ContainsAny(text, "|") {
+					ar_str := strings.Split(text, "|")
+					if len(ar_str) != 2 {
+						return "", fmt.Errorf("Invalid input")
+					}
+					ftext = ar_str[0]
+					otext = ar_str[1]
+				} else {
+					ftext = text
+					otext = "status ASC, title DESC"
+				}
+				filters, _, err := splitParams(ftext)
 				if err != nil {
 					return "", fmt.Errorf("Invalid input")
 				}
-
 				var query string
-				if len(new_params) > 0 {
-					query = insertArgsToQuery("SELECT id, title, description, status FROM tasks ORDER BY ", new_params, " ")
-					query += ";"
+				queryArgs := []interface{}{}
+				if len(filters) > 0 {
+					// Создание запроса с фильтрами и сортировкой
+					query, queryArgs = createSelectQuery("SELECT id, title, description, status FROM tasks", filters, otext)
 				} else {
-					query = "SELECT id, title, description, status FROM tasks ORDER BY status ASC;"
+					query = "SELECT id, title, description, status FROM tasks ORDER BY " + otext + ";"
 				}
-				rows, err := db.Query(query)
+				rows, err := db.Query(query, queryArgs...)
 				if err != nil {
 					return "", err
 				}
