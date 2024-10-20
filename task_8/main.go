@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lib/pq"
 	_ "github.com/lib/pq" // Драйвер для PostgreSQL
 )
 
@@ -57,13 +58,50 @@ func (s TaskStatus) String() string {
 	}
 }
 
+func splitParams(text string) (map[string]string, int, error) {
+
+	var new_params = make(map[string]string)
+	id := -1
+	if text == "" {
+		return new_params, id, nil
+	}
+	args := strings.Split(text, " ")
+	for _, arg := range args {
+		data := strings.Split(arg, "=")
+		if len(data) != 2 {
+			return nil, -1, fmt.Errorf("Invalid input")
+		}
+		name_param := data[0]
+		if name_param == "id" {
+			if id != -1 {
+				fmt.Println("You can use only one id")
+			}
+			lid, err := strconv.Atoi(data[1])
+			if err != nil {
+				fmt.Printf("%q does not looks like a number.\n", data[1])
+			} else {
+				id = lid
+			}
+		} else {
+			new_params[name_param] = data[1]
+		}
+	}
+	return new_params, id, nil
+}
+
 func createTable(db *sql.DB, table_name string) {
 	query_enum := "CREATE TYPE taskstatus AS ENUM ('Opened', 'InProgress', 'Completed');"
 	_, err := db.Exec(query_enum)
 	if err != nil {
-		fmt.Println("Ошибка создания enum:", err)
+		if pg_err, ok := err.(*pq.Error); ok {
+			if pg_err.Code != pq.ErrorCode(42710) {
+				fmt.Println("enum уже существует:", pg_err.Message)
+			} else {
+				fmt.Println("Ошибка создания enum:", err, pg_err.Message, pg_err.Code)
+			}
+		}
 	} else {
-		fmt.Println("enum успешно создан или уже существует!")
+		fmt.Println("enum успешно создан!")
 	}
 
 	query :=
@@ -76,6 +114,34 @@ func createTable(db *sql.DB, table_name string) {
 	} else {
 		fmt.Println("Таблица успешно создана или уже существует!")
 	}
+}
+
+func createQuery(header string, new_params map[string]string, splitter string) (string, []interface{}) {
+	query := header
+	ind := 1
+	query_args := []interface{}{}
+	for k, v := range new_params {
+		query += fmt.Sprintf("%s ", k) + splitter + fmt.Sprintf("$%d", ind)
+		query_args = append(query_args, v)
+		ind++
+		if ind <= len(new_params) {
+			query += ", "
+		}
+	}
+	return query, query_args
+}
+
+func insertArgsToQuery(header string, new_params map[string]string, splitter string) string {
+	query := header //"INSERT INTO tasks (title, description) VALUES "
+	ind := 1
+	for k, v := range new_params {
+		query += k + splitter + v
+		if ind < len(new_params) {
+			query += ", "
+		}
+		ind += 1
+	}
+	return query
 }
 
 func main() {
@@ -137,8 +203,19 @@ func main() {
 		"list": {
 			"List tasks",
 			func(text string) (string, error) {
-				sortBy, sortOrder := "status", "ASC"
-				query := fmt.Sprintf("SELECT id, title, description, status FROM tasks ORDER BY %s %s;", sortBy, sortOrder)
+
+				new_params, _, err := splitParams(text)
+				if err != nil {
+					return "", fmt.Errorf("Invalid input")
+				}
+
+				var query string
+				if len(new_params) > 0 {
+					query = insertArgsToQuery("SELECT id, title, description, status FROM tasks ORDER BY ", new_params, " ")
+					query += ";"
+				} else {
+					query = "SELECT id, title, description, status FROM tasks ORDER BY status ASC;"
+				}
 				rows, err := db.Query(query)
 				if err != nil {
 					return "", err
@@ -171,45 +248,17 @@ func main() {
 		"update": {
 			"Update task",
 			func(text string) (string, error) {
-				args := strings.Split(text, " ")
-				var new_params = make(map[string]string)
-				id := -1
-				for _, arg := range args {
-					data := strings.Split(arg, "=")
-					if len(data) != 2 {
-						return "", fmt.Errorf("Invalid input")
-					}
-					name_param := data[0]
-					if name_param == "id" {
-						if id != -1 {
-							fmt.Println("You can use only one id")
-						}
-						lid, err := strconv.Atoi(data[1])
-						if err != nil {
-							fmt.Printf("%q does not looks like a number.\n", data[1])
-						} else {
-							id = lid
-						}
-					} else {
-						new_params[name_param] = data[1]
-					}
-				}
-				if len(new_params) == 0 || id == -1 {
+				new_params, id, err := splitParams(text)
+				if err != nil || len(new_params) == 0 || id == -1 {
 					return "", fmt.Errorf("Invalid input")
 				}
-				query := "UPDATE tasks SET "
-				ind := 1
-				for k, v := range new_params {
-					query += k + "='" + v + "'"
-					ind = ind + 1
-					if ind < len(new_params) {
-						query += ", "
-					}
-				}
-				query += " WHERE id = $1;"
-				fmt.Println("query=", query)
-				_, err := db.Exec(query, id)
 
+				query, query_args := createQuery("UPDATE tasks SET ", new_params, "= ")
+				query += fmt.Sprintf(" WHERE id = $%d;", len(new_params)+1)
+				query_args = append(query_args, id)
+				fmt.Println("query=", query)
+				fmt.Println("args=", query_args)
+				_, err = db.Exec(query, query_args...)
 				if err != nil {
 					return "", err
 				}
@@ -218,10 +267,19 @@ func main() {
 		},
 	}
 
+	// 	1 Поиск задач по определённым критериям (например, статус):
+	// Команда search status=Opened может позволить искать только открытые задачи.
+	// 2 Команда для завершения задачи:
+	// Создай команду, которая изменяет статус задачи на Completed.
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("Enter query: ")
-		scanner.Scan()
+		ok := scanner.Scan()
+		if !ok {
+			fmt.Println("Error reading input")
+			continue
+		}
 		query := scanner.Text()
 		if query == "\\q" {
 			break
@@ -240,4 +298,6 @@ func main() {
 			fmt.Println(message)
 		}
 	}
+	// value, _ := commands["list"]
+	// _, err = value.operation("")
 }
