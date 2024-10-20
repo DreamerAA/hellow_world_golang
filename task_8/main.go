@@ -94,8 +94,8 @@ func createTable(db *sql.DB, table_name string) {
 	_, err := db.Exec(query_enum)
 	if err != nil {
 		if pg_err, ok := err.(*pq.Error); ok {
-			if pg_err.Code != pq.ErrorCode(42710) {
-				fmt.Println("enum уже существует:", pg_err.Message)
+			if pg_err.Code == pq.ErrorCode("42710") {
+				fmt.Println("enum уже существует.")
 			} else {
 				fmt.Println("Ошибка создания enum:", err, pg_err.Message, pg_err.Code)
 			}
@@ -235,8 +235,18 @@ func main() {
 					if len(ar_str) != 2 {
 						return "", fmt.Errorf("Invalid input")
 					}
-					ftext = ar_str[0]
-					otext = ar_str[1]
+					ftext = strings.TrimSpace(ar_str[0])
+					otext = strings.TrimSpace(ar_str[1])
+					for _, order_text := range strings.Split(otext, ",") {
+						data := strings.Split(strings.TrimSpace(order_text), " ")
+						if len(data) != 2 {
+							return "", fmt.Errorf("Invalid input")
+						}
+						allowedOrder := map[string]bool{"ASC": true, "DESC": true}
+						if !allowedOrder[strings.TrimSpace(data[1])] {
+							return "", fmt.Errorf("Invalid input")
+						}
+					}
 				} else {
 					ftext = text
 					otext = "status ASC, title DESC"
@@ -302,6 +312,21 @@ func main() {
 				return fmt.Sprintf("Task with id = %d updated", id), nil
 			},
 		},
+		"complete": {
+			"Mark task as completed",
+			func(text string) (string, error) {
+				_, id, err := splitParams(text)
+				if err != nil {
+					return "", fmt.Errorf("Invalid task id")
+				}
+				query := `UPDATE tasks SET status = 'Completed' WHERE id = $1;`
+				_, err = db.Exec(query, id)
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("Task with id = %d marked as completed", id), nil
+			},
+		},
 	}
 
 	// 	1 Поиск задач по определённым критериям (например, статус):
@@ -316,6 +341,10 @@ func main() {
 		if !ok {
 			fmt.Println("Error reading input")
 			continue
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Println("Error during input scanning:", err)
+
 		}
 		query := scanner.Text()
 		if query == "\\q" {
