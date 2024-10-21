@@ -9,29 +9,14 @@ import (
 	// "./main"
 )
 
-func GenerateRandomFloats(count int) []float64 {
+func GenerateRandomFloats(count int, seed int64) []float64 {
+	rnd := rand.New(rand.NewSource(seed))
 	max_int := int(math.MaxUint >> 1)
 	result := make([]float64, count)
 	for i := 0; i < count; i++ {
-		result[i] = rand.Float64() * float64(max_int)
+		result[i] = rnd.Float64() * float64(max_int)
 	}
 	return result
-}
-
-func TestSumofAllValues(t *testing.T) {
-	values := []float64{1.0, 2.0, 3.0}
-	expected := 6.0
-	result := SumAllValues(values)
-	if result != expected {
-		t.Fatalf("Expected %f, got %f", expected, result)
-	}
-
-	values = []float64{}
-	expected = 0.
-	result = SumAllValues(values)
-	if result != expected {
-		t.Fatalf("Expected %f, got %f", expected, result)
-	}
 }
 
 func checkSorting(values []float64) error {
@@ -50,62 +35,54 @@ func spaceChecker(new_text string, old_text string, count_spaces int) error {
 	return nil
 }
 
-func TestRandomSpaceInserter(t *testing.T) {
-	count_spaces := 10
-	text_size := 100
-	text := fileutils.GenerateRandomText(text_size)
-	new_text := RandomSpaceInserter(text, count_spaces)
-	err := spaceChecker(new_text, text, count_spaces)
+func defaultSpaceInserter(t *testing.T, count_spaces int, text_size int) {
+	var seed int64 = 10
+	text, err := fileutils.GenerateRandomText(text_size, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-}
-
-func assertPanic(t *testing.T, f func()) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("The code did not panic")
-		}
-	}()
-	f()
-}
-
-func insertToEmptyWithPanic() {
-	count_spaces := 10
-	var text2 = ""
-	new_text := RandomSpaceInserter(text2, count_spaces)
-	err := spaceChecker(new_text, text2, count_spaces)
+	new_text, err := RandomSpaceInserter(text, count_spaces)
 	if err != nil {
-		fmt.Println(err)
+		t.Fatal(err)
+	}
+	err = spaceChecker(new_text, text, count_spaces)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
-func insertMaxIntWithPanic() {
-	count_spaces := 10
-	text_size := int(math.MaxUint >> 1)
-	text2 := fileutils.GenerateRandomText(text_size)
-	new_text := RandomSpaceInserter(text2, count_spaces)
-	err := spaceChecker(new_text, text2, count_spaces)
+func errorSpaceInserter(t *testing.T, count_spaces int, text_size int) {
+	var seed int64 = 10
+	text, err := fileutils.GenerateRandomText(text_size, seed)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
+	new_text, err := RandomSpaceInserter(text, count_spaces)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	t.Fatal(fmt.Errorf("Expected error, got %s", new_text))
 }
 
-func TestRandomSpaceInserterWithPanic(t *testing.T) {
-	assertPanic(t, insertToEmptyWithPanic)
-	assertPanic(t, insertMaxIntWithPanic)
+func TestRandomSpaceInserter(t *testing.T) {
+	defaultSpaceInserter(t, 10, 100)
+	defaultSpaceInserter(t, 10, 0)
+	errorSpaceInserter(t, 10, int(math.MaxUint>>1))
+	errorSpaceInserter(t, int(math.MaxUint>>1), 100)
 }
 
 func TestSorting(t *testing.T) {
-	values := GenerateRandomFloats(10000)
+	var seed int64 = 10
+	values := GenerateRandomFloats(10000, seed)
 	SortArray(values)
 	err := checkSorting(values)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	values = GenerateRandomFloats(0)
+	values = GenerateRandomFloats(0, seed)
 	SortArray(values)
 	err = checkSorting(values)
 	if err != nil {
@@ -113,24 +90,48 @@ func TestSorting(t *testing.T) {
 	}
 }
 
+func TestSumofAllValues(t *testing.T) {
+	values := []float64{1.0, 2.0, 3.0}
+	expected := 6.0
+	result := SumAllValues(values)
+	if result != expected {
+		t.Fatalf("Expected %f, got %f", expected, result)
+	}
+
+	values = []float64{}
+	expected = 0.
+	result = SumAllValues(values)
+	if result != expected {
+		t.Fatalf("Expected %f, got %f", expected, result)
+	}
+}
+
 func BenchmarkSorting(b *testing.B) {
+	var seed int64 = 10
 	for i := 0; i < b.N; i++ {
-		values := GenerateRandomFloats(100000)
+		values := GenerateRandomFloats(100000, seed)
 		SortArray(values)
+		checkSorting(values)
 	}
 }
 
 func BenchmarkInsertSpaces(b *testing.B) {
+	var seed int64 = 10
 	for i := 0; i < b.N; i++ {
 		count_spaces := 1000
 		text_size := 1000
-		text2 := fileutils.GenerateRandomText(text_size)
-		RandomSpaceInserter(text2, count_spaces)
+		text, err := fileutils.GenerateRandomText(text_size, seed)
+		if err != nil {
+			b.Fatal(err)
+		}
+		RandomSpaceInserter(text, count_spaces)
 	}
 }
 
 func BenchmarkSumAllValues(b *testing.B) {
+	var seed int64 = 10
 	for i := 0; i < b.N; i++ {
-		GenerateRandomFloats(10000)
+		values := GenerateRandomFloats(10000, seed)
+		SumAllValues(values)
 	}
 }
