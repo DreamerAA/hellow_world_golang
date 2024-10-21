@@ -17,13 +17,12 @@ func TryOpenFile(path string) *os.File {
 }
 
 func GenerateRandomText(count int) string {
-	result := ""
+	result := make([]rune, count)
 	for i := 0; i < count; i++ {
 		random_int := 32 + rand.Intn(126-32)
-		char_as_str := string(random_int)
-		result += char_as_str
+		result[i] = rune(random_int)
 	}
-	return result
+	return string(result)
 }
 
 func Exists(path string) (bool, error) {
