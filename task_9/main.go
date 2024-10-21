@@ -16,6 +16,10 @@ func SumAllValues(values []float64) float64 {
 	return sum
 }
 
+// RandomSpaceInserter inserts random spaces into the given text string.
+// If the text is empty, it repeats spaces based on the count.
+// If the text length is too long to insert spaces, it returns an error.
+// It then proceeds to insert spaces randomly within the text up to the specified count.
 func RandomSpaceInserter(text string, count int) (string, error) {
 	if text == "" {
 		return strings.Repeat(" ", count), nil

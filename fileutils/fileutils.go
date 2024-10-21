@@ -3,22 +3,25 @@ package fileutils
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 )
 
-func tryAllocateSlice(size int) (data []rune, success bool) {
+func tryAllocateSlice(size int) (data []rune, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Паника при выделении памяти:", r)
-			success = false
+			err = fmt.Errorf("Невозможно выделить память %d", size)
 		}
 	}()
-
+	if size < 0 || size > int(math.MaxInt32) {
+		return nil, fmt.Errorf("Невозможно выделить память %d", size)
+	}
 	// Пытаемся выделить слайс нужного размера
 	data = make([]rune, size)
 
-	return data, true
+	return data, nil
 }
 
 func TryOpenFile(path string) *os.File {
@@ -32,9 +35,9 @@ func TryOpenFile(path string) *os.File {
 
 func GenerateRandomText(count int, seed int64) (string, error) {
 	rnd := rand.New(rand.NewSource(seed))
-	result, success := tryAllocateSlice(count)
-	if !success {
-		return "", fmt.Errorf("Невозможно выделить память")
+	result, err := tryAllocateSlice(count)
+	if err != nil {
+		return "", err
 	}
 	for i := 0; i < count; i++ {
 		random_int := 32 + rnd.Intn(126-32)

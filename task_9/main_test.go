@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fileutils"
 	"fmt"
+	"hellow_world_golang/fileutils"
 	"math"
 	"math/rand"
 	"testing"
@@ -108,8 +108,9 @@ func TestSumofAllValues(t *testing.T) {
 
 func BenchmarkSorting(b *testing.B) {
 	var seed int64 = 10
+	size := 100000
 	for i := 0; i < b.N; i++ {
-		values := GenerateRandomFloats(100000, seed)
+		values := GenerateRandomFloats(size, seed)
 		SortArray(values)
 		checkSorting(values)
 	}
@@ -117,9 +118,10 @@ func BenchmarkSorting(b *testing.B) {
 
 func BenchmarkInsertSpaces(b *testing.B) {
 	var seed int64 = 10
+	count_spaces := 1000
+	text_size := 1000
 	for i := 0; i < b.N; i++ {
-		count_spaces := 1000
-		text_size := 1000
+
 		text, err := fileutils.GenerateRandomText(text_size, seed)
 		if err != nil {
 			b.Fatal(err)
@@ -130,8 +132,9 @@ func BenchmarkInsertSpaces(b *testing.B) {
 
 func BenchmarkSumAllValues(b *testing.B) {
 	var seed int64 = 10
+	size := 10000
 	for i := 0; i < b.N; i++ {
-		values := GenerateRandomFloats(10000, seed)
+		values := GenerateRandomFloats(size, seed)
 		SumAllValues(values)
 	}
 }
