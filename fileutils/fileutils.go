@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func tryAllocateSlice(size int) (data []rune, err error) {
+func TryAllocateSlice(size int) (data []rune, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Паника при выделении памяти:", r)
@@ -35,7 +35,7 @@ func TryOpenFile(path string) *os.File {
 
 func GenerateRandomText(count int, seed int64) (string, error) {
 	rnd := rand.New(rand.NewSource(seed))
-	result, err := tryAllocateSlice(count)
+	result, err := TryAllocateSlice(count)
 	if err != nil {
 		return "", err
 	}
