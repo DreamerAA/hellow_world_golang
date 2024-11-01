@@ -66,31 +66,6 @@ func CreateTable(db *sql.DB, table_name string, fields []string) {
 	}
 }
 
-func createQuery(header string, filters map[string]interface{}, istart int, order_params string) (string, []interface{}) {
-	query := header
-	args := []interface{}{}
-	argCount := istart + 1
-
-	// Добавление фильтров с плейсхолдерами
-	if len(filters) > 0 {
-		query += " WHERE "
-		for key, value := range filters {
-			query += fmt.Sprintf("%s = $%d", key, argCount)
-			if argCount-istart > 1 {
-				query += " AND "
-			}
-			args = append(args, value)
-			argCount++
-		}
-	}
-	// Добавление параметров сортировки
-	if order_params != "" {
-		query += " ORDER BY " + order_params
-	}
-	query += ";"
-	return query, args
-}
-
 func addParams(header string, new_params map[string]interface{}, splitter string, istart int) (string, []interface{}) {
 	query := header
 	ind := istart + 1
@@ -114,10 +89,12 @@ func CreateSelectQuery(db *sql.DB, table_name string, fields []string, filters m
 
 	if len(filters) > 0 {
 		// Создание запроса с фильтрами и сортировкой
-		query, queryArgs = createQuery(header, filters, 0, otext)
-	} else {
-		query = header + " ORDER BY " + otext + ";"
+		query, queryArgs = addParams(header+" WHERE ", filters, " = ", 0)
 	}
+	if otext != "" {
+		query += " ORDER BY " + otext
+	}
+	query += ";"
 	return db.Query(query, queryArgs...)
 }
 
@@ -141,7 +118,7 @@ func CreateInsertQuery(db *sql.DB, table_name string, fields []string, values []
 }
 
 func CreateDeleteQuery(db *sql.DB, table_name string, filters map[string]interface{}) error {
-	query, args := createQuery("DELETE FROM "+table_name, filters, 0, "")
+	query, args := addParams("DELETE FROM "+table_name+" WHERE ", filters, " = ", 0)
 	_, err := db.Exec(query, args...)
 	if err != nil {
 		return err
@@ -151,10 +128,8 @@ func CreateDeleteQuery(db *sql.DB, table_name string, filters map[string]interfa
 
 func CreateUpdateQuery(db *sql.DB, table_name string, values map[string]interface{}, filters map[string]interface{}) error {
 	query, args := addParams("UPDATE "+table_name+" SET ", values, " = ", 0)
-	fmt.Println("Query:", query, args)
-	query, args_where := createQuery(query, filters, len(values), "")
+	query, args_where := addParams(query+" WHERE ", filters, " = ", len(values))
 	args = append(args, args_where...)
-	fmt.Println("Query:", query, args)
 	_, err := db.Exec(query, args...)
 	if err != nil {
 		return err
