@@ -171,7 +171,7 @@ func insertArgsToQuery(header string, new_params map[string]string, splitter str
 
 func main() {
 	// Строка подключения к PostgreSQL
-	connStr := "postgres://admin:admin@localhost:5432/todobd?sslmode=disable"
+	connStr := "postgres://admin:admin@localhost:5432/usual?sslmode=disable"
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
