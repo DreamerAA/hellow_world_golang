@@ -9,6 +9,21 @@ import (
 	"github.com/lib/pq"
 )
 
+func addParams(header string, new_params map[string]interface{}, splitter string, istart int) (string, []interface{}) {
+	query := header
+	ind := istart + 1
+	query_args := []interface{}{}
+	for k, v := range new_params {
+		query += fmt.Sprintf("%s ", k) + splitter + fmt.Sprintf("$%d", ind)
+		query_args = append(query_args, v)
+		ind++
+		if ind <= len(new_params) {
+			query += ", "
+		}
+	}
+	return query, query_args
+}
+
 func OpenDataBase(name string) (*sql.DB, error) {
 
 	connStr := "postgres://admin:admin@localhost:5432/" + name + "?sslmode=disable"
@@ -25,13 +40,14 @@ func OpenDataBase(name string) (*sql.DB, error) {
 func CreateEnum(db *sql.DB, enum_name string, statuses []string) {
 	query_enum := "CREATE TYPE " + enum_name + " AS ENUM ("
 	for i, status := range statuses {
-		query_enum += "'" + status
-		if i < len(status)-1 {
-			query_enum += "', "
-		} else {
-			query_enum += "');"
+		query_enum += "'" + status + "'"
+		if i != len(statuses)-1 {
+			query_enum += ", "
 		}
 	}
+	query_enum += ");"
+
+	fmt.Println("Query create enum:", query_enum)
 	_, err := db.Exec(query_enum)
 	if err != nil {
 		if pg_err, ok := err.(*pq.Error); ok {
@@ -43,6 +59,16 @@ func CreateEnum(db *sql.DB, enum_name string, statuses []string) {
 		}
 	} else {
 		fmt.Println("enum успешно создан!")
+	}
+}
+func RemoveEnum(db *sql.DB, enum_name string) {
+	query := "DROP TYPE IF EXISTS " + enum_name + ";"
+
+	_, err := db.Exec(query)
+	if err != nil {
+		fmt.Println("Ошибка удаления enum:", err)
+	} else {
+		fmt.Println("enum успешно удален!")
 	}
 }
 
@@ -63,21 +89,6 @@ func CreateTable(db *sql.DB, table_name string, fields []string) {
 	} else {
 		fmt.Println("Таблица успешно создана или уже существует!")
 	}
-}
-
-func addParams(header string, new_params map[string]interface{}, splitter string, istart int) (string, []interface{}) {
-	query := header
-	ind := istart + 1
-	query_args := []interface{}{}
-	for k, v := range new_params {
-		query += fmt.Sprintf("%s ", k) + splitter + fmt.Sprintf("$%d", ind)
-		query_args = append(query_args, v)
-		ind++
-		if ind <= len(new_params) {
-			query += ", "
-		}
-	}
-	return query, query_args
 }
 
 func CreateSelectQuery(db *sql.DB, table_name string, fields []string, filters map[string]interface{}, otext string) (*sql.Rows, error) {

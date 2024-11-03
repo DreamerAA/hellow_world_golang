@@ -64,16 +64,19 @@ func registerRequests(db *sql.DB) {
 			items := getAllItems(db, filters)
 			jresp, err := json.Marshal(items)
 			if err != nil {
+				fmt.Println("Ошибка кодирования JSON:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			putResponseToJson(jresp, w)
+			w.WriteHeader(http.StatusOK)
 			return
 
 		case http.MethodPut:
 			jreq := make(map[string]interface{})
 			err := json.NewDecoder(r.Body).Decode(&jreq)
 			if err != nil {
+				fmt.Println("Ошибка декодирования JSON:", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -84,19 +87,25 @@ func registerRequests(db *sql.DB) {
 
 			err = psql.CreateUpdateQuery(db, "items", values, filters)
 			if err != nil {
+				fmt.Println("Ошибка выполнения запроса для обновления:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+			w.WriteHeader(http.StatusOK)
 			return
 		case http.MethodDelete:
 			err := psql.CreateDeleteQuery(db, "items", filters)
 			if err != nil {
+				fmt.Println("Ошибка выполнения запроса для удаления:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+			w.WriteHeader(http.StatusNoContent)
 			return
 		case http.MethodPost:
+			fmt.Println("Обработка такого запроса не предуссмотрена API")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		default:
+			fmt.Println("Обработка такого запроса не предуссмотрена API")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -116,6 +125,7 @@ func registerRequests(db *sql.DB) {
 
 			jresp, err := json.Marshal(items)
 			if err != nil {
+				fmt.Println("Ошибка декодирования JSON:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -125,6 +135,7 @@ func registerRequests(db *sql.DB) {
 			jreq := make(map[string]interface{})
 			err := json.NewDecoder(r.Body).Decode(&jreq)
 			if err != nil {
+				fmt.Println("Ошибка декодирования JSON:", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -133,17 +144,20 @@ func registerRequests(db *sql.DB) {
 
 			item.Name, ok = jreq["Name"].(string)
 			if !ok {
+				fmt.Println("Ошибка получения имени элемента")
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			item.Details, ok = jreq["Details"].(string)
 			if !ok {
+				fmt.Println("Ошибка получения деталей элемента")
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			var id int
 			id, err = psql.CreateInsertQuery(db, "items", []string{"Name", "Details"}, []interface{}{item.Name, item.Details})
 			if err != nil {
+				fmt.Println("Ошибка выполнения запроса для создания:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -154,18 +168,23 @@ func registerRequests(db *sql.DB) {
 			jresp["message"] = "Item created"
 			jrespJson, err := json.Marshal(jresp)
 			if err != nil {
+				fmt.Println("Ошибка декодирования JSON:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			w.WriteHeader(http.StatusCreated)
 			putResponseToJson(jrespJson, w)
 			return
 		case http.MethodPut:
+			fmt.Println("Обработка такого запроса не предуссмотрена API")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		case http.MethodDelete:
+			fmt.Println("Обработка такого запроса не предуссмотрена API")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		default:
+			fmt.Println("Обработка такого запроса не предуссмотрена API")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -184,5 +203,9 @@ func main() {
 	psql.CreateTable(db, "items", []string{"ID SERIAL PRIMARY KEY", "Name TEXT NOT NULL", "Details TEXT"})
 
 	registerRequests(db)
+
+	psql.CreateEnum(db, "status", []string{"active", "inactive", "undefined"})
+	psql.RemoveEnum(db, "status")
+
 	http.ListenAndServe(":8080", nil)
 }
