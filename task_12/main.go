@@ -7,7 +7,8 @@ import (
 	"log"
 	"net/http"
 	"psql"
-	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 type Item struct {
@@ -49,16 +50,13 @@ func putResponseToJson(jresp []byte, w http.ResponseWriter) {
 }
 
 func registerRequests(db *sql.DB) {
-	http.HandleFunc("/items/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		fmt.Println("Length:", len(parts))
-		if len(parts) != 3 || parts[2] == "" {
-			fmt.Println("Length:", len(parts))
-			http.NotFound(w, r)
-			return
-		}
-		fmt.Println("ID:", parts[2])
-		filters := map[string]interface{}{"ID": parts[2]}
+	router := mux.NewRouter()
+
+	router.HandleFunc("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+		filters := map[string]interface{}{"ID": id}
+
 		switch r.Method {
 		case http.MethodGet:
 			items := getAllItems(db, filters)
@@ -70,8 +68,6 @@ func registerRequests(db *sql.DB) {
 			}
 			putResponseToJson(jresp, w)
 			w.WriteHeader(http.StatusOK)
-			return
-
 		case http.MethodPut:
 			jreq := make(map[string]interface{})
 			err := json.NewDecoder(r.Body).Decode(&jreq)
@@ -91,7 +87,6 @@ func registerRequests(db *sql.DB) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			w.WriteHeader(http.StatusOK)
-			return
 		case http.MethodDelete:
 			err := psql.CreateDeleteQuery(db, "items", filters)
 			if err != nil {
@@ -99,26 +94,10 @@ func registerRequests(db *sql.DB) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			w.WriteHeader(http.StatusNoContent)
-			return
-		case http.MethodPost:
-			fmt.Println("Обработка такого запроса не предуссмотрена API")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		default:
-			fmt.Println("Обработка такого запроса не предуссмотрена API")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
 		}
-	})
-	http.HandleFunc("/items", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		fmt.Println("Length:", len(parts))
-		if len(parts) != 2 {
-			fmt.Println("Length:", len(parts))
-			http.NotFound(w, r)
-			return
-		}
+	}).Methods("GET", "PUT", "DELETE")
 
+	router.HandleFunc("/items", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			items := getAllItems(db, make(map[string]interface{}))
@@ -130,7 +109,6 @@ func registerRequests(db *sql.DB) {
 				return
 			}
 			putResponseToJson(jresp, w)
-			return
 		case http.MethodPost:
 			jreq := make(map[string]interface{})
 			err := json.NewDecoder(r.Body).Decode(&jreq)
@@ -139,33 +117,28 @@ func registerRequests(db *sql.DB) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			var ok bool
-			var item Item
 
-			item.Name, ok = jreq["Name"].(string)
+			name, ok := jreq["Name"].(string)
 			if !ok {
 				fmt.Println("Ошибка получения имени элемента")
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			item.Details, ok = jreq["Details"].(string)
+			details, ok := jreq["Details"].(string)
 			if !ok {
 				fmt.Println("Ошибка получения деталей элемента")
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			var id int
-			id, err = psql.CreateInsertQuery(db, "items", []string{"Name", "Details"}, []interface{}{item.Name, item.Details})
+			id, err = psql.CreateInsertQuery(db, "items", []string{"Name", "Details"}, []interface{}{name, details})
 			if err != nil {
 				fmt.Println("Ошибка выполнения запроса для создания:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			print("Element ID:", id)
-			jresp := make(map[string]string)
-			jresp["status"] = "OK"
-			jresp["id"] = fmt.Sprintf("%d", id)
-			jresp["message"] = "Item created"
+
+			jresp := map[string]string{"status": "OK", "id": fmt.Sprintf("%d", id), "message": "Item created"}
 			jrespJson, err := json.Marshal(jresp)
 			if err != nil {
 				fmt.Println("Ошибка декодирования JSON:", err)
@@ -174,21 +147,10 @@ func registerRequests(db *sql.DB) {
 			}
 			w.WriteHeader(http.StatusCreated)
 			putResponseToJson(jrespJson, w)
-			return
-		case http.MethodPut:
-			fmt.Println("Обработка такого запроса не предуссмотрена API")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		case http.MethodDelete:
-			fmt.Println("Обработка такого запроса не предуссмотрена API")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		default:
-			fmt.Println("Обработка такого запроса не предуссмотрена API")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
 		}
-	})
+	}).Methods("GET", "POST")
+
+	http.Handle("/", router)
 }
 
 func main() {
@@ -204,8 +166,5 @@ func main() {
 
 	registerRequests(db)
 
-	psql.CreateEnum(db, "status", []string{"active", "inactive", "undefined"})
-	psql.RemoveEnum(db, "status")
-
-	http.ListenAndServe(":8080", nil)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
