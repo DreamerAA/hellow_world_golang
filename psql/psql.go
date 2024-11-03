@@ -48,7 +48,6 @@ func CreateEnum(db *sql.DB, enum_name string, statuses []string) {
 
 func CreateTable(db *sql.DB, table_name string, fields []string) {
 	query := "CREATE TABLE IF NOT EXISTS " + table_name + "("
-	// "(id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, status taskstatus DEFAULT 'Opened');"
 	for i, field := range fields {
 		query += field
 		if i < len(fields)-1 {
@@ -82,19 +81,19 @@ func addParams(header string, new_params map[string]interface{}, splitter string
 }
 
 func CreateSelectQuery(db *sql.DB, table_name string, fields []string, filters map[string]interface{}, otext string) (*sql.Rows, error) {
-
-	var query string
 	queryArgs := []interface{}{}
-	header := "SELECT " + strings.Join(fields, ", ") + " FROM " + table_name
+	query := "SELECT " + strings.Join(fields, ", ") + " FROM " + table_name
 
 	if len(filters) > 0 {
 		// Создание запроса с фильтрами и сортировкой
-		query, queryArgs = addParams(header+" WHERE ", filters, " = ", 0)
+		query, queryArgs = addParams(query+" WHERE ", filters, " = ", 0)
 	}
 	if otext != "" {
 		query += " ORDER BY " + otext
 	}
 	query += ";"
+	fmt.Println(query)
+	fmt.Println(queryArgs)
 	return db.Query(query, queryArgs...)
 }
 
