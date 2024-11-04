@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type ReadWorker struct {
@@ -24,13 +26,17 @@ type WriteWorker struct {
 }
 
 func padArray(array []float64, window_size int) []float64 {
-	half_window := int(window_size / 2)
 	size := len(array)
+	if window_size > size {
+		log.Fatal("Window size is shorter than array size")
+	}
+
+	half_window := int(window_size / 2)
 	data := make([]float64, size+2*half_window)
 	copy(data[half_window:(half_window+size)], array[:])
 	copy(data[:half_window], array[:half_window])
 	copy(data[(size+half_window):], array[(size-half_window):])
-	fmt.Println("Pad array ready!")
+	log.Debug("Pad array ready!")
 	return data
 }
 
@@ -48,13 +54,13 @@ func workReading(worker ReadWorker, wg *sync.WaitGroup) {
 
 	content, err := os.ReadFile(worker.file_name)
 	if err != nil {
-		fmt.Println(err)
+		log.Info(err)
 		return
 	}
 
 	err = json.Unmarshal(content, &array)
 	if err != nil {
-		fmt.Println(err)
+		log.Info(err)
 		return
 	}
 
@@ -76,13 +82,13 @@ func workFiltering(worker FilterWorker, wg *sync.WaitGroup) {
 		padded_data := padArray(array, window_size)
 
 		filtered_data := make([]float64, size)
-		fmt.Println("Padded array size:", len(padded_data))
+		log.Debug("Padded array size:", len(padded_data))
 		for i := 0; i < size; i++ {
 			filtered_data[i] = getMeadValue(padded_data[i:(i + window_size)])
 		}
 		worker.output_chanel <- filtered_data
 	}
-	fmt.Println("Filtering ready!")
+	log.Debug("Filtering ready!")
 	close(worker.output_chanel)
 }
 
@@ -96,23 +102,24 @@ func workWriting(worker WriteWorker, wg *sync.WaitGroup) {
 		}
 		err = os.WriteFile(worker.file_name, data, 0644)
 		if err != nil {
-			fmt.Println(err)
+			log.Info(err)
 			continue
 		}
-		fmt.Println("Writing ready!")
+		log.Debug("Writing ready!")
 	}
 }
 
 func main() {
+	log.SetLevel(log.DebugLevel)
 
 	var wg_main sync.WaitGroup
 	entries, err := os.ReadDir("./inputs")
 	if err != nil {
-		fmt.Println(err)
+		log.Info(err)
 		return
 	}
 	for _, e := range entries {
-		fmt.Println("Entry:", e.Name())
+		log.Debug("Entry:", e.Name())
 		read_worker := ReadWorker{"./inputs/" + e.Name(), make(chan []float64)}
 		filter_worker := FilterWorker{5, read_worker.output_chanel, make(chan []float64)}
 		write_worker := WriteWorker{"./outputs/" + e.Name(), filter_worker.output_chanel}
