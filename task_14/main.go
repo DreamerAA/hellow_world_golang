@@ -13,6 +13,7 @@ import (
 	"psql"
 
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 )
 
 type SalesRecord struct {
@@ -40,16 +41,22 @@ func putResponseToJson(jresp []byte, w http.ResponseWriter) {
 }
 
 func readDataAndInsertToDB(db *sql.DB, data []byte) ([]int, error) {
+	products := getAllProducts(db)
 	sales, err := extractSalesFromJson(data)
 	if err != nil {
 		return nil, err
 	}
+
 	ids := make([]int, len(sales))
 	for i, sale := range sales {
-		fmt.Println(sale)
+		_, ok := products[sale.ProductID]
+		if !ok {
+			log.Error("Товар с id", sale.ProductID, "не найден")
+			continue
+		}
 		id, err := psql.CreateInsertQuery(db, "sales", []string{"ID", "ProductID", "Quantity", "Date"}, []interface{}{sale.OrderID, sale.ProductID, sale.Quantity, sale.Date})
 		if err != nil {
-			fmt.Println("Ошибка для вставки записи:", err, sale)
+			log.Error("Ошибка для вставки записи:", err, sale)
 			continue
 		}
 		ids[i] = id
@@ -65,20 +72,20 @@ func registerRequests(db *sql.DB) {
 		case http.MethodPost:
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				fmt.Println("Ошибка чтения тела запроса:", err)
+				log.Error("Ошибка чтения тела запроса:", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			ids, err := readDataAndInsertToDB(db, body)
 			if err != nil {
-				fmt.Println("Ошибка:", err)
+				log.Error("Ошибка:", err)
 				return
 			}
 
 			jresp := map[string]interface{}{"status": "OK", "ids": ids, "message": "Item created"}
 			jrespJson, err := json.Marshal(jresp)
 			if err != nil {
-				fmt.Println("Ошибка декодирования JSON:", err)
+				log.Error("Ошибка декодирования JSON:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -95,12 +102,11 @@ func runScanner(db *sql.DB) {
 	for {
 		ok := scanner.Scan()
 		if !ok {
-			fmt.Println("Error reading input")
+			log.Error("Error reading input")
 			continue
 		}
 		if err := scanner.Err(); err != nil {
-			fmt.Println("Error during input scanning:", err)
-
+			log.Error("Error during input scanning:", err)
 		}
 		query := scanner.Text()
 		if query == "\\q" {
@@ -109,9 +115,9 @@ func runScanner(db *sql.DB) {
 		bytes, _ := os.ReadFile(query)
 		ids, err := readDataAndInsertToDB(db, bytes)
 		if err != nil {
-			fmt.Println("Ошибка:", err)
+			log.Error("Ошибка:", err)
 		} else {
-			fmt.Println("Sales Records were created with ids:", ids)
+			log.Debug("Sales Records were created with ids:", ids)
 		}
 	}
 }
@@ -137,8 +143,8 @@ func getAllSales(db *sql.DB) []SalesRecord {
 	return sales
 }
 
-func getAllProducts(db *sql.DB) []Product {
-	var products []Product
+func getAllProducts(db *sql.DB) map[int]Product {
+	products := make(map[int]Product)
 	rows, err := psql.CreateSelectQuery(db, "products", "*", map[string]interface{}{}, "ID DESC")
 	defer rows.Close()
 	if err != nil {
@@ -149,7 +155,7 @@ func getAllProducts(db *sql.DB) []Product {
 		var product Product
 		err := rows.Scan(&product.ID, &product.Name, &product.Price)
 		if err == nil {
-			products = append(products, product)
+			products[product.ID] = product
 		} else {
 			log.Fatal(err)
 			return products
@@ -162,12 +168,16 @@ func prepareReport(db *sql.DB) string {
 	products := getAllProducts(db)
 	sales := getAllSales(db)
 	report := "Отчет о продажах\n================\n"
-	report += "Товар       Сумма\n------------------\n"
+	report += "Номер транзакции\tДата\tТовар\tСумма\n------------------\n"
 	total := 0.0
 	for _, sale := range sales {
-		product := products[sale.ProductID-1]
+		product, ok := products[sale.ProductID]
+		if !ok {
+			log.Error("Товар с id", sale.ProductID, "не найден")
+			continue
+		}
 		sum := product.Price * float64(sale.Quantity)
-		report += fmt.Sprintf("%d %s %s $%.2f\n", sale.OrderID, sale.Date, product.Name, sum)
+		report += fmt.Sprintf("%d\t%s\t%s\t$%.2f\n", sale.OrderID, sale.Date, product.Name, sum)
 		total += sum
 	}
 	report += "------------------\n"
@@ -187,7 +197,7 @@ func main() {
 	}
 	defer db.Close()
 
-	psql.CreateTable(db, "sales", []string{"ID INT UNIQUE NOT NULL", "ProductID INT NOT NULL", "Quantity TEXT NOT NULL", "Date DATE NOT NULL"})
+	psql.CreateTable(db, "sales", []string{"ID INT UNIQUE NOT NULL", "ProductID INT NOT NULL", "Quantity INT NOT NULL", "Date TIMESTAMP NOT NULL"})
 
 	if *mode != "json" && *mode != "http" && *mode != "stat" {
 		log.Fatal("mode must be `json`, `http` or `stat`")
