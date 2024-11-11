@@ -1,0 +1,14 @@
+[
+    {
+        "product_id": 1,
+        "quantity": 3,
+        "date": "2024-09-30 00:02:00",
+        "order_id": 3
+    },
+    {
+        "product_id": 2,
+        "quantity": 2,
+        "date": "2024-09-30 00:03:00",
+        "order_id": 4
+    }
+]

@@ -91,9 +91,18 @@ func CreateTable(db *sql.DB, table_name string, fields []string) {
 	}
 }
 
-func CreateSelectQuery(db *sql.DB, table_name string, fields []string, filters map[string]interface{}, otext string) (*sql.Rows, error) {
+func CreateSelectQuery(db *sql.DB, table_name string, fields interface{}, filters map[string]interface{}, otext string) (*sql.Rows, error) {
 	queryArgs := []interface{}{}
-	query := "SELECT " + strings.Join(fields, ", ") + " FROM " + table_name
+	query := "SELECT "
+	switch fields.(type) {
+	case []string:
+		query += strings.Join(fields.([]string), ", ")
+	case string:
+		query += fields.(string)
+	default:
+		return nil, fmt.Errorf("fields must be []string or string")
+	}
+	query += " FROM " + table_name
 
 	if len(filters) > 0 {
 		// Создание запроса с фильтрами и сортировкой
@@ -103,8 +112,6 @@ func CreateSelectQuery(db *sql.DB, table_name string, fields []string, filters m
 		query += " ORDER BY " + otext
 	}
 	query += ";"
-	fmt.Println(query)
-	fmt.Println(queryArgs)
 	return db.Query(query, queryArgs...)
 }
 
