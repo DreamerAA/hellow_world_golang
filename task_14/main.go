@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"psql"
@@ -168,7 +167,7 @@ func prepareReport(db *sql.DB) string {
 	products := getAllProducts(db)
 	sales := getAllSales(db)
 	report := "Отчет о продажах\n================\n"
-	report += "Номер транзакции\tДата\tТовар\tСумма\n------------------\n"
+	report += "Номер транзакции\tДата\tТовар\tСумма\n---------------------------------------------\n"
 	total := 0.0
 	for _, sale := range sales {
 		product, ok := products[sale.ProductID]
