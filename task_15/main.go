@@ -1,19 +1,24 @@
 package main
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func main() {
-	// Пример использования LRUCache
-	cache := NewLRUCache(3)
-
+	cache := NewLFUCache(2)
 	cache.Set("key1", "value1")
 	cache.Set("key2", "value2")
-	cache.Set("key3", "value3")
-	cache.Get("key1")           // "key1" становится последним использованным
-	cache.Set("key4", "value4") // "key2" вытесняется
 
-	fmt.Println(cache.Get("key2")) // nil, false
-	fmt.Println(cache.Get("key3")) // "value3", true
+	cache.Set("key2", "value2")
+	cache.Set("key2", "value2")
+	cache.Set("key2", "value2")
+
+	cache.Set("key1", "value1")
+	cache.Set("key3", "value3")
+
+	val1 := cache.Get("key1")
+	val2 := cache.Get("key2")
+	val3 := cache.Get("key3")
+
+	if val1 != nil || val2 != "value2" || val3 != "value3" {
+		fmt.Errorf("Expected nil, got %v", val2)
+	}
 }
